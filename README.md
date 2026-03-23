@@ -45,7 +45,7 @@ Runs a [Codex CLI](https://github.com/openai/codex) brainstorming session non-in
 
 **What happens:**
 1. Claude builds a focused prompt covering three questions: gaps, fastest win, unconventional approach
-2. Launches Codex in the background (`codex exec --config 'approval_policy="never"'`)
+2. Launches Codex in the background (`codex exec --config 'approval_policy="never"'`), auto-detecting non-git directories and adding `--skip-git-repo-check` when needed
 3. Does its own independent review while Codex runs (30–120s)
 4. Compares both perspectives, accepts findings grounded in file/line references
 5. Updates the plan file with accepted findings
@@ -139,7 +139,7 @@ checks in chat.py and profile_og.py, one toggle in admin.html.
 Solves "I'm not ready to share yet" drop-off immediately.
 
 Unconventional approach for onboarding:
-"AI Ghostwriter Interview" — instead of asking users to upload a resume,
+"AI Ghostwriter Interview" — instead of asking users to upload document,
 the AI initiates a 3-question chat on first login. Turns a "work" task
 (finding a PDF) into a "social" task (chatting). The backend generates
 profile_data.txt from the answers automatically.
@@ -164,7 +164,7 @@ Runs Codex and Gemini **simultaneously** as background tasks, does an independen
 ```
 
 **What happens:**
-1. Fires both `codex exec` and `gemini -p` as background Bash commands in a **single message** — true parallelism, neither blocks the other
+1. Fires both `codex exec` and `gemini -p` as background Bash commands in a **single message** — true parallelism, neither blocks the other. Auto-detects non-git directories and adds `--skip-git-repo-check` for Codex when needed
 2. Claude does its own independent review while both run (30–120s)
 3. On completion, reads both outputs and builds a three-way comparison table
 4. Applies a confidence tier: 3/3 → accept immediately, 2/3 → accept if grounded in a file reference, 1/3 → manual codebase check required

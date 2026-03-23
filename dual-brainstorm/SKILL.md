@@ -12,8 +12,20 @@ Runs `/codex-brainstorm` and `/gemini-brainstorm` simultaneously as background B
 In a **single message**, fire two background Bash tool calls simultaneously:
 
 **Codex:**
+
+First detect whether the working directory is inside a git repo. Codex refuses to run in non-git directories without `--skip-git-repo-check`:
+
+```bash
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  GIT_FLAG=""
+else
+  GIT_FLAG="--skip-git-repo-check"
+fi
+```
+
 ```bash
 cat $PLAN_FILE | codex exec \
+  $GIT_FLAG \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
   "$PROMPT" 2>&1

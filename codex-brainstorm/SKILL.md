@@ -26,14 +26,28 @@ For open-ended brainstorming, ask for: multiple angles, trade-offs, creative alt
 
 ## Step 2: Run Codex in the Background
 
+First detect whether the working directory is inside a git repo:
+
+```bash
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  GIT_FLAG=""
+else
+  GIT_FLAG="--skip-git-repo-check"
+fi
+```
+
+Then launch Codex:
+
 ```bash
 cat $PLAN_FILE | codex exec \
+  $GIT_FLAG \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
   "$YOUR_PROMPT" 2>&1
 ```
 
 Key flags:
+- `--skip-git-repo-check` — required when the working directory is not a git repo (Codex refuses to run otherwise)
 - `approval_policy="never"` — fully non-interactive, no approval prompts
 - `sandbox_permissions=["disk-full-read-access"]` — lets Codex read the codebase freely
 - Pipe the plan file via stdin so Codex has the context without you duplicating it in the prompt
