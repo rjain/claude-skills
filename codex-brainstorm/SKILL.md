@@ -26,6 +26,8 @@ For open-ended brainstorming, ask for: multiple angles, trade-offs, creative alt
 
 ## Step 2: Run Codex in the Background
 
+**IMPORTANT: Codex does NOT read piped stdin.** Its sandbox blocks stdin forwarding, so `cat file | codex exec` silently loses the input. Instead, pass all content directly in the prompt argument. If you have a plan file, read it first and embed its contents in the prompt string.
+
 First detect whether the working directory is inside a git repo:
 
 ```bash
@@ -36,21 +38,25 @@ else
 fi
 ```
 
-Then launch Codex:
+Then launch Codex with **everything in the prompt argument** (no stdin piping):
 
 ```bash
-cat $PLAN_FILE | codex exec \
+codex exec \
   $GIT_FLAG \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
-  "$YOUR_PROMPT" 2>&1
+  "$YOUR_PROMPT_WITH_PLAN_CONTENT_INLINED" 2>&1
+```
+
+If you have a plan file, read its contents first (via the Read tool or `cat`) and interpolate them into the prompt string. For example:
+```
+"You are a staff engineer. Review this plan:\n\n$(cat $PLAN_FILE)\n\nBrainstorm: (1) critical gaps..."
 ```
 
 Key flags:
 - `--skip-git-repo-check` — required when the working directory is not a git repo (Codex refuses to run otherwise)
 - `approval_policy="never"` — fully non-interactive, no approval prompts
 - `sandbox_permissions=["disk-full-read-access"]` — lets Codex read the codebase freely
-- Pipe the plan file via stdin so Codex has the context without you duplicating it in the prompt
 - Codex will autonomously grep/read the repo to ground its feedback in real code
 
 Run as a background Bash command so the main conversation stays free.

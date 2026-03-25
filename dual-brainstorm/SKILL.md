@@ -11,6 +11,8 @@ Runs `/codex-brainstorm` and `/gemini-brainstorm` simultaneously as background B
 
 In a **single message**, fire two background Bash tool calls simultaneously:
 
+**IMPORTANT: Codex does NOT read piped stdin** (its sandbox blocks stdin forwarding). Pass all content directly in the prompt argument. If you have a plan file, read it first and embed its contents in the prompt string. Gemini's `-p` flag does work with stdin, but for consistency, prefer inlining for both.
+
 **Codex:**
 
 First detect whether the working directory is inside a git repo. Codex refuses to run in non-git directories without `--skip-git-repo-check`:
@@ -24,16 +26,16 @@ fi
 ```
 
 ```bash
-cat $PLAN_FILE | codex exec \
+codex exec \
   $GIT_FLAG \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
-  "$PROMPT" 2>&1
+  "$PROMPT_WITH_ALL_CONTENT_INLINED" 2>&1
 ```
 
-**Gemini:**
+**Gemini** (stdin piping works here, but inlining is also fine):
 ```bash
-cat $PLAN_FILE | gemini --approval-mode yolo -p "$PROMPT" 2>&1
+gemini --approval-mode yolo -p "$PROMPT_WITH_ALL_CONTENT_INLINED" 2>&1
 ```
 
 Both use `run_in_background: true`. Both get the same prompt so their outputs are directly comparable.

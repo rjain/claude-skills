@@ -80,6 +80,6 @@ Be direct and concise.
 |---|---|---|
 | Model | GPT (via OpenAI Codex CLI) | Gemini 2.5 Pro |
 | Non-interactive flag | `--config 'approval_policy="never"'` | `--approval-mode yolo` |
-| Stdin piping | `cat file \| codex exec ... "prompt"` | `cat file \| gemini -p "prompt"` |
+| Input method | **No stdin** — inline all content in prompt arg | `cat file \| gemini -p "prompt"` (stdin works) |
 | Codebase access | `sandbox_permissions=["disk-full-read-access"]` | Automatic (working directory) |
 | Best for | GPT-family second opinion | Gemini-family second opinion |
