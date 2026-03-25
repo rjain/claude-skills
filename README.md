@@ -34,6 +34,7 @@ Skills are available immediately — no restart required.
 
 ### Prerequisites
 
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
 - `codex` — `npm install -g @openai/codex`
 - `gemini` — `npm install -g @google/gemini-cli`
 
