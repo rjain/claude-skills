@@ -10,6 +10,17 @@ Skills are prompt files that extend Claude Code with slash commands. Each skill 
 
 ## Installation
 
+### Via Claude Code Marketplace (recommended)
+
+In a Claude Code session:
+```
+/plugin marketplace add rjain/claude-skills
+```
+
+Then browse and install the `multi-model-brainstorm` plugin, which includes all three skills.
+
+### Manual Installation
+
 ```bash
 git clone https://github.com/rjain/claude-skills.git ~/sw/ai/claude-skills
 
@@ -21,7 +32,8 @@ done
 
 Skills are available immediately — no restart required.
 
-**Prerequisites:**
+### Prerequisites
+
 - `codex` — `npm install -g @openai/codex`
 - `gemini` — `npm install -g @google/gemini-cli`
 

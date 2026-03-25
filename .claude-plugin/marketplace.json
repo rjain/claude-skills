@@ -1,0 +1,36 @@
+{
+  "name": "claude-skills",
+  "owner": {
+    "name": "rjain",
+    "email": ""
+  },
+  "metadata": {
+    "description": "Multi-model brainstorming skills for Claude Code. Run Codex CLI, Gemini CLI, or both in parallel against your real codebase, then synthesize findings with Claude's own review for high-confidence, grounded critiques.",
+    "version": "1.1.0",
+    "homepage": "https://github.com/rjain/claude-skills"
+  },
+  "plugins": [
+    {
+      "name": "multi-model-brainstorm",
+      "description": "Run Codex and/or Gemini CLI brainstorming sessions against your codebase for multi-perspective plan review, design critique, and idea generation",
+      "source": "./",
+      "strict": false,
+      "version": "1.1.0",
+      "category": "developer-tools",
+      "keywords": [
+        "brainstorm",
+        "codex",
+        "gemini",
+        "multi-model",
+        "plan-review",
+        "code-review",
+        "design-critique"
+      ],
+      "skills": [
+        "./codex-brainstorm",
+        "./gemini-brainstorm",
+        "./dual-brainstorm"
+      ]
+    }
+  ]
+}
