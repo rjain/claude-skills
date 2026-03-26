@@ -10,27 +10,56 @@ Skills are prompt files that extend Claude Code with slash commands. Each skill 
 
 ## Installation
 
-### Via Claude Code Marketplace (recommended)
+There are two ways to install: as a **plugin** (one install, all three skills) or as **individual skills** (pick what you need). Both give you the same slash commands.
 
-In a Claude Code session:
+### Option A: Plugin (recommended for most users)
+
+A plugin is a versioned bundle tracked in `settings.json`. One command installs all three skills at once.
+
+In a Claude Code session, run:
 ```
 /plugin marketplace add rjain/claude-skills
 ```
 
-Then browse and install the `multi-model-brainstorm` plugin, which includes all three skills.
+This registers the repo. You'll then be prompted to browse and enable the `multi-model-brainstorm` plugin, which contains `/codex-brainstorm`, `/gemini-brainstorm`, and `/dual-brainstorm`. Choose whether to enable it at project level (current project only) or global level (all sessions including desktop app).
 
-### Manual Installation
+### Option B: Individual Skills
+
+A skill is a single `SKILL.md` file that defines one slash command. Symlink only the skills you want directly into Claude's skills directory — no plugin system involved.
 
 ```bash
-git clone https://github.com/rjain/claude-skills.git ~/sw/ai/claude-skills
+git clone https://github.com/rjain/claude-skills.git ~/claude-skills
 
-# Symlink each skill into Claude's skills directory
-for skill in ~/sw/ai/claude-skills/*/; do
-  ln -s "$skill" ~/.claude/skills/"$(basename "$skill")"
-done
+# Symlink all three (or pick just the ones you want)
+ln -s ~/claude-skills/codex-brainstorm  ~/.claude/skills/codex-brainstorm
+ln -s ~/claude-skills/gemini-brainstorm ~/.claude/skills/gemini-brainstorm
+ln -s ~/claude-skills/dual-brainstorm   ~/.claude/skills/dual-brainstorm
 ```
 
 Skills are available immediately — no restart required.
+
+### Plugin vs. Individual Skills
+
+| | Plugin | Individual Skills |
+|---|---|---|
+| **Install** | One command installs all three | Symlink each skill separately |
+| **Updates** | Versioned; update via marketplace | Manual `git pull` |
+| **Scope** | Project or global `settings.json` | Global (`~/.claude/skills/`) or project (`.claude/skills/`) |
+| **Flexibility** | All-or-nothing bundle | Pick only the skills you need |
+| **Desktop app** | Only if installed globally (see below) | Works in desktop if symlinked to `~/.claude/skills/` |
+
+### Global vs. Project-Level Installation
+
+> **Caution:** Think carefully about where you install.
+
+- **Project-level** (`.claude/settings.json` or `.claude/skills/` inside a project) — skills are only available when Claude Code is opened in that project directory. The Claude desktop app won't see them.
+- **Global** (`~/.claude/settings.json` or `~/.claude/skills/`) — skills are available in every session, including the desktop app.
+
+**If you installed the plugin at project level** and want it everywhere, either:
+1. Add `"multi-model-brainstorm@claude-skills": true` to your global `~/.claude/settings.json` under `enabledPlugins`, or
+2. Switch to individual skill symlinks into `~/.claude/skills/` (Option B above).
+
+For most users, **global installation** is simpler — you get the skills everywhere without thinking about which project you're in.
 
 ### Prerequisites
 
