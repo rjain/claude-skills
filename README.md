@@ -2,7 +2,7 @@
 
 A collection of reusable [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for multi-model collaboration on planning and design.
 
-Each skill runs one or more AI CLI tools (Codex, Gemini) autonomously against your real codebase, then synthesizes their findings alongside Claude's own review. The result is a grounded, multi-perspective critique you can act on immediately.
+Each skill runs one or more AI CLI tools (Codex, and a Gemini model via Antigravity's `agy`) autonomously against your real codebase, then synthesizes their findings alongside Claude's own review. The result is a grounded, multi-perspective critique you can act on immediately.
 
 ## What are skills?
 
@@ -65,7 +65,7 @@ For most users, **global installation** is simpler — you get the skills everyw
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
 - `codex` — `npm install -g @openai/codex`
-- `gemini` — `npm install -g @google/gemini-cli`
+- `agy` (Antigravity CLI) — ships with the [Antigravity app](https://antigravity.google); provides the Gemini model. (The old `gemini` CLI is no longer usable headlessly — Google discontinued its free "Login with Google" auth on 2026-06-18.)
 
 ---
 
@@ -130,11 +130,11 @@ Plan updated: 3 new items added, 1 annotated.
 
 ### `/gemini-brainstorm`
 
-Runs a [Gemini CLI](https://github.com/google-gemini/gemini-cli) brainstorming session non-interactively. Gemini reads the working directory autonomously with `--approval-mode yolo` before answering, providing a Gemini-family perspective on the same questions.
+Runs a Gemini-model brainstorming session non-interactively via [Antigravity's `agy` CLI](https://antigravity.google) (`agy --print`). It reads the working directory (passed with `--add-dir`) before answering, providing a Gemini-family perspective on the same questions. Replaces the old `gemini` CLI, whose free login Google discontinued on 2026-06-18.
 
 **When to use:** You want a Gemini second opinion, or as a complement to `/codex-brainstorm` to see where the two models agree vs. diverge.
 
-**Requires:** `gemini` on PATH — `npm install -g @google/gemini-cli`
+**Requires:** `agy` (Antigravity CLI) on PATH — ships with the [Antigravity app](https://antigravity.google)
 
 **Usage:**
 ```
@@ -144,7 +144,7 @@ Runs a [Gemini CLI](https://github.com/google-gemini/gemini-cli) brainstorming s
 
 **What happens:**
 1. Claude builds the same three-question prompt
-2. Launches Gemini in the background (`gemini --approval-mode yolo -p "..."`)
+2. Launches the Gemini model in the background (`agy --add-dir "$PWD" -p "..." </dev/null`)
 3. Does its own independent review while Gemini runs
 4. Compares perspectives and updates the plan
 
@@ -197,7 +197,7 @@ Runs Codex and Gemini **simultaneously** as background tasks, does an independen
 
 **When to use:** Before finalizing a plan, before starting a large implementation, or any time you want the highest-confidence critique with the least manual effort.
 
-**Requires:** Both `codex` and `gemini` on PATH. Falls back to the available tool + Claude's own review if one is missing.
+**Requires:** Both `codex` and `agy` (Antigravity CLI) on PATH. Falls back to the available tool + Claude's own review if one is missing.
 
 **Usage:**
 ```
@@ -206,7 +206,7 @@ Runs Codex and Gemini **simultaneously** as background tasks, does an independen
 ```
 
 **What happens:**
-1. Fires both `codex exec` and `gemini -p` as background Bash commands in a **single message** — true parallelism, neither blocks the other. Auto-detects non-git directories and adds `--skip-git-repo-check` for Codex when needed
+1. Fires both `codex exec` and `agy -p` as background Bash commands in a **single message** — true parallelism, neither blocks the other. Auto-detects non-git directories and adds `--skip-git-repo-check` for Codex when needed
 2. Claude does its own independent review while both run (30–120s)
 3. On completion, reads both outputs and builds a three-way comparison table
 4. Applies a confidence tier: 3/3 → accept immediately, 2/3 → accept if grounded in a file reference, 1/3 → manual codebase check required

@@ -15,17 +15,17 @@ Runs `/codex-brainstorm` and `/gemini-brainstorm` simultaneously as background B
 echo "$CLAUDE_CODE_ENTRYPOINT"
 ```
 
-If `claude-desktop`, you are in Claude Desktop which has a **60-second hardcoded MCP tool timeout**. This doesn't affect `codex exec` or `gemini` CLI directly, but is important context — always use CLI paths, never MCP, for these tools in Claude Desktop.
+If `claude-desktop`, you are in Claude Desktop which has a **60-second hardcoded MCP tool timeout**. This doesn't affect `codex exec` or `agy` directly, but is important context — always use CLI paths, never MCP, for these tools in Claude Desktop.
 
 **Check tool availability:**
 
 ```bash
-which codex && which gemini
+which codex && which agy
 ```
 
 If only one tool is available, fall back to single-tool + your own review. If neither is available, abort and suggest installing them.
 
-**Gemini minimum version: 0.24.0.** Check with `gemini --version`. Earlier versions (e.g. 0.1.x from Homebrew) are missing `--approval-mode`, `-o json`, and `--resume`. Install/update via `npm install -g @google/gemini-cli`.
+**Gemini is now Antigravity's `agy`.** The old `gemini` CLI is dead for headless use — Google killed its free "Login with Google" auth on **2026-06-18**, so `gemini -p` now fails with `IneligibleTierError … UNSUPPORTED_CLIENT`. `agy` is a native binary (ships with the [Antigravity app](https://antigravity.google) at `~/.local/bin/agy`) that reuses your existing Antigravity login — no API key, no node-version workaround, no version gate. Just confirm it runs with `agy --version`. Pick a Gemini model from `agy models` (this skill uses `"Gemini 3.1 Pro (High)"`).
 
 **Codex mode detection:** Check if `codex exec resume --help` succeeds. If so, use `--json` output to capture the thread ID for potential follow-up. Otherwise, use stateless mode.
 
@@ -43,7 +43,7 @@ If a plan file path was provided as the argument, read it now so its content can
 
 In a **single message**, fire two background Bash tool calls simultaneously:
 
-**IMPORTANT: Codex does NOT read piped stdin** (its sandbox blocks stdin forwarding). Pass all content directly in the prompt argument. If you have a plan file, read it first and embed its contents in the prompt string. Gemini's `-p` flag does work with stdin, but for consistency, prefer inlining for both.
+**IMPORTANT: inline all content in the prompt argument, and redirect stdin from `/dev/null`.** Codex does NOT read piped stdin (its sandbox blocks stdin forwarding), and a backgrounded `agy -p` *hangs forever* waiting on stdin EOF unless you append `</dev/null`. So for both tools: read the plan file first, embed its contents in the prompt string, and end the command with `</dev/null`.
 
 **Codex** (with JSONL output for structured parsing):
 
@@ -85,17 +85,17 @@ print(msg)
 ")
 ```
 
-**Gemini** (with JSON output for session ID capture):
+**Gemini — via Antigravity `agy`** (the old `gemini` CLI is dead; see Step 0):
 
 ```bash
-gemini --approval-mode yolo -o json -p "$PROMPT_WITH_ALL_CONTENT_INLINED" 2>/dev/null
+# `--add-dir "$PWD"` lets agy read your codebase (without it, agy runs in an
+# empty scratch workspace). `</dev/null` is REQUIRED — a backgrounded `agy -p`
+# otherwise hangs forever on stdin EOF. Read-only by default (no
+# `--dangerously-skip-permissions` needed for a brainstorm).
+agy --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "$PROMPT_WITH_ALL_CONTENT_INLINED" </dev/null 2>&1
 ```
 
-Parse the session ID for potential follow-up:
-
-```bash
-GEMINI_SESSION_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['session_id'])")
-```
+`agy` has no `session_id`/`-o json` output, but dual-brainstorm is single-shot so none is needed (multi-round state lives in `/team-brainstorm`).
 
 Both use `run_in_background: true`. Both get the same prompt so their outputs are directly comparable.
 
@@ -153,6 +153,6 @@ For each accepted finding, update the plan file. For overrides, note which tool 
 - **Graceful degradation:** If one tool fails (config error, timeout, not installed), continue with the other + your own review. A 2-perspective synthesis is still more valuable than a single perspective. Do not abort the entire skill because one tool failed.
 - The three-way comparison is more valuable than any single tool — disagreements surface the most interesting gaps
 - **Background task race condition:** Output files may appear empty (0 bytes) briefly after a background task reports completion — there can be a small delay between process exit and file flush. Always wait for the background task notification before reading output files. If an output file reads as empty, wait 2-3 seconds and retry the read before concluding the model returned nothing.
-- **Gemini `--approval-mode yolo` is NOT inherited on `--resume`.** It must be passed explicitly on every call or Gemini hangs waiting for interactive approval.
+- **`agy -p` needs `</dev/null` when backgrounded** or it hangs forever on stdin EOF (same trap as `codex exec`). It also needs `--add-dir "$PWD"` to see your code — without it agy runs in an empty scratch workspace and answers from the prompt alone.
 - **Environment detection:** `CLAUDE_CODE_ENTRYPOINT=claude-desktop` means 60s hardcoded MCP timeout — always use CLI paths. Any other value means Claude Code CLI where MCP is also safe.
 - Expect 30-120 seconds per tool depending on codebase size and topic complexity.

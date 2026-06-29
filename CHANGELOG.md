@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-28
+
+### Migrate all brainstorm skills from `gemini` CLI to Antigravity `agy`
+
+Google discontinued the free "Login with Google" auth for Gemini Code Assist (individuals / AI Pro / AI Ultra) on **2026-06-18**, breaking headless `gemini -p` (it now fails with `IneligibleTierError … UNSUPPORTED_CLIENT`). All skills now use Google's official replacement, the **Antigravity CLI `agy`** — a native binary that reuses the existing Antigravity login (no API key, no node-version/PATH workaround).
+
+**All brainstorm skills (gemini-brainstorm, dual-brainstorm, team-brainstorm):**
+- Replaced `gemini -p` with `agy --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p`
+- `--add-dir "$PWD"` is required for codebase grounding (agy otherwise runs in an empty scratch workspace)
+- Read-only by default (no `--dangerously-skip-permissions`), matching gemini's old `--approval-mode plan`
+- Added `</dev/null` to backgrounded `agy -p` calls — without it agy hangs forever on stdin EOF (same trap as `codex exec`)
+- Dropped the `gemini --version` gate and `@google/gemini-cli` install steps
+
+**team-brainstorm (stateful multi-round):**
+- agy has no `-o json` / `session_id`; capture the conversation id by diffing `~/.gemini/antigravity-cli/conversations/*.db` around round 1, then resume later rounds with `agy --conversation "<UUID>"`
+- Verified `--conversation <id>` resumes that specific conversation even when it is not the most recent; an unknown id silently falls back to most-recent (never pre-mint ids; treat "not found" as a failed resume)
+
+**Docs:**
+- Updated README prerequisites and skill descriptions; bumped plugin to 1.2.0
+
 ## 2026-03-31
 
 ### codex-brainstorm, gemini-brainstorm, dual-brainstorm — Reliability improvements
