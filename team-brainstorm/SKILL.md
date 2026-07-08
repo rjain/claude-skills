@@ -5,7 +5,7 @@ description: "Run a multi-round debate across Claude, Codex, and Gemini on any t
 
 # Team Brainstorm: Stateful Multi-Model Debate
 
-Runs a structured multi-round debate between Claude, Codex (via MCP or resumable CLI), and Gemini (via CLI). Each model researches independently, critiques the others' findings, and defends or concedes positions across rounds. Claude orchestrates the loop and synthesizes the final consensus.
+Runs a structured multi-round debate between Claude, Codex (via MCP or resumable CLI), and Gemini (via the Antigravity CLI `agy`). Each model researches independently, critiques the others' findings, and defends or concedes positions across rounds. Claude orchestrates the loop and synthesizes the final consensus.
 
 ## Arguments
 
@@ -50,7 +50,15 @@ Always pass `--skip-git-repo-check` to Codex. Brainstorm tasks are research-only
 GIT_FLAG="--skip-git-repo-check"
 ```
 
-**Gemini:** Verify `gemini` is on PATH and check `gemini --version`. **Minimum version: 0.24.0.** Earlier versions (e.g. 0.1.x installed via Homebrew) are missing `--approval-mode`, `-o json`, and `--resume` flags required by this skill. If the version is below 0.36.0, abort with a message: `"Gemini CLI >= 0.36.0 required (found X.Y.Z). Install/update via: npm install -g @google/gemini-cli"`. Gemini runs via Bash with `--resume` for statefulness across rounds.
+**Gemini (via Antigravity `agy`):** The old `gemini` CLI is dead for this skill — Google killed its free "Login with Google" auth on 2026-06-18, so headless `gemini -p` now fails with `IneligibleTierError … UNSUPPORTED_CLIENT`. Use **Antigravity's `agy`** instead: a native binary at `~/.local/bin/agy` that reuses your existing Antigravity login (no API key, no node-version workaround). There is no version gate to enforce — just confirm it runs:
+
+```bash
+command -v agy >/dev/null && agy --version || echo "agy not found"
+```
+
+If `agy` is missing, it ships with the Antigravity app; run `agy install` to configure paths, or call it at `~/.local/bin/agy`. Pick a Gemini model from `agy models` — this skill uses `"Gemini 3.1 Pro (High)"` to keep the seat a "Gemini" perspective. `agy -p` is **read-only by default** (no `--dangerously-skip-permissions` needed for research rounds) and needs `--add-dir "$PWD"` to see your code.
+
+Unlike `gemini`, `agy` has **no `-o json` / `session_id`** output. It keeps state per *conversation*, stored on disk as `~/.gemini/antigravity-cli/conversations/<UUID>.db`. For statefulness across rounds, capture that `<UUID>` after Round 1 by diffing the conversations dir before/after the call, then resume later rounds with `agy --conversation "<UUID>"`. **Verified:** `--conversation <id>` resumes that *specific* conversation even when it is not the most recent — safe for this interleaved debate. **Caveat:** if you pass an unknown or typo'd id, `agy` prints `Warning: conversation "..." not found` and **silently falls back to the most-recent conversation** — so never pre-mint your own id (`agy` ignores it and assigns its own), and treat a "not found" warning as a failed resume. This same fallback is why bare `-c` / `--continue` ("most recent") is too fragile to rely on here.
 
 If a plan file path was provided as the argument, read the file now so its content can be embedded in prompts.
 
@@ -58,11 +66,21 @@ If a plan file path was provided as the argument, read the file now so its conte
 
 **Important:** Never pass `--ephemeral` to `codex exec` when using resume mode — it prevents session persistence and breaks `codex exec resume`.
 
+**Background-task stdin trap (must-fix):** `codex exec` reads its prompt from stdin in addition to the positional argument. When invoked as a background task in Claude Code's Bash tool (`run_in_background: true`), stdin is connected to the parent shell rather than a TTY, and Codex hangs forever printing `Reading additional input from stdin...` while it waits for EOF. **`agy -p` has the identical trap** (verified: a backgrounded `agy -p` without `</dev/null` hangs at the prompt indefinitely and never returns, producing a 0-byte output file). **Always redirect stdin from `/dev/null`** in every `codex exec`, `codex exec resume`, **and `agy -p`** invocation. Failure to do this manifests as a 0-byte output file with no completion notification. Apply to every Codex **and `agy`** command in this skill — Round 1, Round 2, Round 3, sanity probes, the lot.
+
+```bash
+# WRONG — hangs in background
+codex exec ... "prompt" > out.jsonl
+
+# RIGHT — closes stdin so codex uses the positional arg only
+codex exec ... "prompt" </dev/null > out.jsonl
+```
+
 Create a small in-memory session record for this debate:
 - `entrypoint`: value of `CLAUDE_CODE_ENTRYPOINT` (`claude-desktop` | `cli` | empty)
 - `codex_mode`: `mcp` | `cli-resume` | `cli-stateless`
 - `codex_thread_id` (from JSONL `thread.started` event or MCP `threadId` return)
-- `gemini_session_id`
+- `gemini_conversation_id` (the `<UUID>` of the `.db` agy created in Round 1; resume later rounds with `agy --conversation "$gemini_conversation_id"`)
 - `topic`
 - per-round outputs and summaries
 
@@ -109,7 +127,7 @@ Research thoroughly. Provide specific findings, evidence, and reasoning.
 Be opinionated — take clear positions you're willing to defend.
 Keep your response under 500 words.
 
-{PLAN_CONTENT if applicable}" 2>&1
+{PLAN_CONTENT if applicable}" </dev/null 2>&1
 ```
 
 Parse the JSONL output to extract the thread ID and final response. The output format is:
@@ -159,27 +177,31 @@ Save `CODEX_THREAD_ID` for subsequent rounds and `CODEX_RESPONSE` as Round 1 fin
 
 If CLI resume is unavailable, use the same `codex exec` command shape above (with or without `--json`) but treat it as one-shot only. Save the final message as Round 1 findings; there is no reusable thread id in this mode.
 
-### Gemini
+### Gemini (via Antigravity `agy`)
 
-Run in background via Bash:
+Run in background via Bash. `agy` has no `session_id` to parse, so capture the **conversation id** by diffing the on-disk conversation store around the call: a fresh `-p` run creates exactly one new `~/.gemini/antigravity-cli/conversations/<UUID>.db`, and that `<UUID>` is what you resume with later.
 
 ```bash
-gemini --approval-mode yolo -p "You are a research agent in a multi-model debate. Your task: {TOPIC}
+CONV_DIR=~/.gemini/antigravity-cli/conversations
+BEFORE=$(mktemp); ls "$CONV_DIR"/*.db 2>/dev/null | sort > "$BEFORE"
+
+agy --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "You are a research agent in a multi-model debate. Your task: {TOPIC}
 
 Research thoroughly. Provide specific findings, evidence, and reasoning.
 Be opinionated — take clear positions you're willing to defend.
 Keep your response under 500 words.
 
-{PLAN_CONTENT if applicable}" -o json 2>/dev/null
+{PLAN_CONTENT if applicable}" </dev/null 2>&1
+
+# Capture the conversation id agy just created (the single new .db file).
+GEMINI_CONVERSATION_ID=$(comm -13 "$BEFORE" <(ls "$CONV_DIR"/*.db 2>/dev/null | sort) | head -1 | xargs basename 2>/dev/null | sed 's/\.db$//')
+echo "GEMINI_CONVERSATION_ID=$GEMINI_CONVERSATION_ID"
 ```
 
-Use `-o json` for Round 1 to capture the `session_id` from the response. Parse it:
-
-```bash
-echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['session_id'])"
-```
-
-Save the `session_id` for subsequent rounds. Also extract the `response` field as Gemini's Round 1 findings.
+- `</dev/null` is **required** (background stdin trap — see Step 0) or the call hangs forever.
+- `--add-dir "$PWD"` is **required** for codebase grounding; without it `agy` runs in an empty scratch workspace and reports your project as empty.
+- Read-only by default — do **not** add `--dangerously-skip-permissions` for research rounds.
+- The model's findings are the command's stdout (plain text, no JSON wrapper). Save both the response and `GEMINI_CONVERSATION_ID` (printed on the last line) for subsequent rounds. If the diff yields an empty id, fall back to the newest db: `basename "$(ls -t "$CONV_DIR"/*.db | head -1)" .db`.
 
 ### Claude (your own research)
 
@@ -238,17 +260,19 @@ Review their positions. For each:
 1. If you agree, say so briefly and why
 2. If you disagree, challenge with specific evidence
 3. Revise your own position if their evidence is compelling
-State your updated top findings. Under 500 words." 2>&1
+State your updated top findings. Under 500 words." </dev/null 2>&1
 ```
 
 Parse the JSONL output with the same helper as Round 1. The `thread_id` will be the same across rounds — Codex remembers its full prior conversation.
 
 If `codex_mode = cli-stateless`, use `codex exec` and inline Codex's own prior summary in the prompt: `In Round 1, you argued: {Codex Round 1 summary}. Now respond to...`
 
-### Gemini
+### Gemini (via Antigravity `agy`)
+
+Resume the same conversation with `--conversation "{GEMINI_CONVERSATION_ID}"` (the id captured in Round 1). Resuming reuses the existing `.db` — do **not** re-capture an id this round.
 
 ```bash
-gemini --resume "{SESSION_ID}" --approval-mode yolo -p "Round 2 of the debate. Here are the other agents' positions:
+agy --conversation "{GEMINI_CONVERSATION_ID}" --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "Round 2 of the debate. Here are the other agents' positions:
 
 CODEX's findings:
 {Codex Round 1 summary}
@@ -260,8 +284,10 @@ Review their positions. For each:
 1. If you agree, say so briefly and why
 2. If you disagree, challenge with specific evidence
 3. Revise your own position if their evidence is compelling
-State your updated top findings. Under 500 words." -o json 2>/dev/null
+State your updated top findings. Under 500 words." </dev/null 2>&1
 ```
+
+If the output begins with `Warning: conversation "..." not found`, the id was wrong/stale and `agy` silently fell back to the most-recent conversation — re-capture the id from Round 1 and retry rather than trusting that response.
 
 ### Claude
 
@@ -298,17 +324,17 @@ If `codex_mode = cli-resume`, continue with `codex exec resume "{CODEX_THREAD_ID
 
 If `codex_mode = cli-stateless`, use `codex exec` and inline the full debate history summary.
 
-### Gemini
+### Gemini (via Antigravity `agy`)
 
 ```bash
-gemini --resume "{SESSION_ID}" --approval-mode yolo -p "Final round. Remaining disputes:
+agy --conversation "{GEMINI_CONVERSATION_ID}" --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "Final round. Remaining disputes:
 {List of disagreements from Round 2}
 
 Codex's latest position: {Codex Round 2 summary}
 Claude's latest position: {Claude Round 2 summary}
 
 Defend or concede on each disputed point. State your FINAL position on each.
-Be decisive — no hedging. Under 300 words." -o json 2>/dev/null
+Be decisive — no hedging. Under 300 words." </dev/null 2>&1
 ```
 
 ### Claude
@@ -349,7 +375,7 @@ If a plan file was provided, offer to update it with the accepted findings.
 
 ## Notes
 
-- Codex can maintain full conversation memory in two ways: MCP (`threadId`) or CLI resume (`codex exec` + `codex exec resume {THREAD_ID}`). Gemini maintains memory via `--resume` with `session_id`.
+- Codex can maintain full conversation memory in two ways: MCP (`threadId`) or CLI resume (`codex exec` + `codex exec resume {THREAD_ID}`). Gemini (via `agy`) maintains memory via `agy --conversation {GEMINI_CONVERSATION_ID}`, where the id is the `<UUID>` of the conversation `.db` agy created in Round 1.
 - **Environment detection:** `CLAUDE_CODE_ENTRYPOINT=claude-desktop` means you're in Claude Desktop (60s hardcoded MCP timeout — skip MCP). Any other value means Claude Code CLI (MCP is safe). This env var is always set by the host process.
 - Prefer Codex MCP only in Claude Code CLI where tool timeouts are generous. In Claude Desktop, always use CLI resume — MCP will time out on any non-trivial Codex task. Only use stateless `codex exec` on older Codex installs that do not support resume.
 - Runtime capability detection is more reliable than version checks alone. Use `codex exec resume --help` to decide whether CLI resume is supported.
@@ -358,9 +384,10 @@ If a plan file was provided, offer to update it with the accepted findings.
 - **Alternative to JSONL parsing:** Pass `--output-last-message /path/to/file.txt` to have Codex write only the final assistant message to a file. Combine with `--json` piped to a variable to get both the `thread_id` (from JSONL) and clean response text (from the file).
 - If one model fails mid-debate, continue with the remaining two. A 2-model debate is still more valuable than a single perspective.
 - Keep prompts to external models under 500 words per round to manage context costs and avoid token limits.
-- The `session_id` for Gemini comes from the `-o json` output's `session_id` field. Subsequent `--resume` calls use this to maintain conversation state.
+- `agy` has no `-o json` / `session_id`. Capture the conversation id by diffing `~/.gemini/antigravity-cli/conversations/*.db` before/after the Round 1 call (the one new `<UUID>.db`); subsequent rounds resume with `agy --conversation {GEMINI_CONVERSATION_ID}`. Verified that `--conversation <id>` resumes that specific conversation even when it is not the most recent. `agy` reuses your existing Antigravity login (no API key); if it can't authenticate, open the Antigravity app once to refresh the session, then retry. It needs `--add-dir "$PWD"` to read your project — it does not auto-read the shell's cwd.
 - When using Codex CLI fallback, prefer `--json` output so you can capture the thread id and preserve structured logs. Persist per-round outputs and ids in a small session record so retries and later synthesis are easier.
-- **Gemini `--approval-mode yolo` is NOT inherited on `--resume`.** It must be passed explicitly on every call or Gemini hangs waiting for interactive approval. All rounds in this skill already include it.
+- **`agy -p` is read-only by default** — research rounds need no approval-bypass flag, so do not pass `--dangerously-skip-permissions` (this replaces the old `gemini --approval-mode yolo`). Every `agy -p` call needs `</dev/null` (background stdin trap) and `--add-dir "$PWD"` (codebase grounding) on every round.
+- **`agy --conversation` silently falls back to the most-recent conversation if the id is unknown**, printing `Warning: conversation "..." not found`. Never pre-mint your own UUID — `agy` ignores it and assigns its own. Always capture the real id from Round 1, and treat a "not found" warning as a failed resume (re-capture and retry).
 - **Config pitfalls:** If `codex exec` fails with a config.toml parsing error (e.g., `web_search = "live"` under `[features]`), work around it with `CODEX_HOME=$(mktemp -d)` and a minimal config, or ask the user to fix their config. If `codex exec` fails with 401 Unauthorized using `CODEX_HOME` override, the API key is stored in the original home — use the original `CODEX_HOME` and only override specific config keys via `--config`.
 - Expect ~2-4 minutes for a 3-round debate depending on model response times.
 - **Background task output race condition:** When Codex and Gemini run as `run_in_background` Bash tasks, the output file may appear empty (0 bytes) briefly after the task reports completion — there can be a small delay between process exit and file flush. **Always wait for the background task notification before reading output files.** If an output file reads as empty, wait 2-3 seconds and retry the read before concluding the model returned nothing. Do NOT use the Read tool to poll — wait for the `<task-notification>` that confirms completion.
