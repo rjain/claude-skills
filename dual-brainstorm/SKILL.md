@@ -39,6 +39,14 @@ GIT_FLAG="--skip-git-repo-check"
 
 If a plan file path was provided as the argument, read it now so its content can be embedded in prompts.
 
+## Model selection (optional)
+
+Both seats default to today's behavior; override either per run via flags parsed from the skill argument (everything that is not a flag is the topic/plan path). The flags are applied inside each tool's command block in Step 1:
+
+- `--codex-model <id>` → adds `-m <id>` to `codex exec`. Use explicit ids (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`), **not** the bare `gpt-5.6` alias (some codex builds lack metadata for it and reject it). Omit → your `~/.codex/config.toml` default. GPT-5.6 needs a recent codex (verified on `0.144.1`; `0.125.0` is too old).
+- `--codex-effort <level>` → adds `-c 'model_reasoning_effort="<level>"'` (`minimal`/`low`/`medium`/`high`/`xhigh`; `gpt-5.6-sol` needs `medium` or higher). Omit → config default.
+- `--gemini-model "<name>"` → replaces `agy --model` (**quote it** — names contain spaces; e.g. `"Gemini 3.5 Flash (High)"`). Omit → `"Gemini 3.1 Pro (High)"`.
+
 ## Step 1: Launch Both CLI Tools in Parallel
 
 In a **single message**, fire two background Bash tool calls simultaneously:
@@ -48,7 +56,14 @@ In a **single message**, fire two background Bash tool calls simultaneously:
 **Codex** (with JSONL output for structured parsing):
 
 ```bash
-codex exec $GIT_FLAG \
+# Optional model overrides (empty = your codex config default):
+CODEX_MODEL=""     # from --codex-model  (e.g. gpt-5.6-sol)
+CODEX_EFFORT=""    # from --codex-effort (e.g. high)
+CODEX_MODEL_ARGS=()
+[ -n "$CODEX_MODEL" ]  && CODEX_MODEL_ARGS+=(-m "$CODEX_MODEL")
+[ -n "$CODEX_EFFORT" ] && CODEX_MODEL_ARGS+=(-c "model_reasoning_effort=\"$CODEX_EFFORT\"")
+
+codex exec $GIT_FLAG "${CODEX_MODEL_ARGS[@]}" \
   --json \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
@@ -92,7 +107,8 @@ print(msg)
 # empty scratch workspace). `</dev/null` is REQUIRED — a backgrounded `agy -p`
 # otherwise hangs forever on stdin EOF. Read-only by default (no
 # `--dangerously-skip-permissions` needed for a brainstorm).
-agy --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "$PROMPT_WITH_ALL_CONTENT_INLINED" </dev/null 2>&1
+GEMINI_MODEL="${GEMINI_MODEL:-Gemini 3.1 Pro (High)}"   # override via --gemini-model "<name>"
+agy --add-dir "$PWD" --model "$GEMINI_MODEL" -p "$PROMPT_WITH_ALL_CONTENT_INLINED" </dev/null 2>&1
 ```
 
 `agy` has no `session_id`/`-o json` output, but dual-brainstorm is single-shot so none is needed (multi-round state lives in `/team-brainstorm`).

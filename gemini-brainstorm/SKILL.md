@@ -26,6 +26,10 @@ Construct a focused prompt. For a plan file, include:
 
 For open-ended brainstorming, ask for: multiple angles, trade-offs, creative alternatives.
 
+## Model selection (optional)
+
+The Gemini seat defaults to `"Gemini 3.1 Pro (High)"`. Override for a single run with `--gemini-model "<name>"` (parsed from the skill argument), passed straight to `agy --model`. Pick any entry from `agy models` (e.g. `"Gemini 3.5 Flash (High)"`, `"Gemini 3.1 Pro (Low)"`). **Quote it** — agy model names contain spaces. agy bakes the reasoning tier into the name (`(High)`/`(Low)`), so there is no separate effort flag.
+
 ## Step 2: Run agy in the Background
 
 ```bash
@@ -33,7 +37,8 @@ For open-ended brainstorming, ask for: multiple angles, trade-offs, creative alt
 # the old gemini-cli). It reuses your existing Antigravity login (no API key).
 # `</dev/null` is REQUIRED: a backgrounded `agy -p` otherwise hangs forever
 # waiting on stdin EOF (same trap as `codex exec`).
-agy --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "$YOUR_PROMPT
+GEMINI_MODEL="${GEMINI_MODEL:-Gemini 3.1 Pro (High)}"   # override via --gemini-model "<name>"
+agy --add-dir "$PWD" --model "$GEMINI_MODEL" -p "$YOUR_PROMPT
 
 THE PLAN:
 $(cat $PLAN_FILE)" </dev/null 2>&1

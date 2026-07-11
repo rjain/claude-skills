@@ -17,8 +17,17 @@ Parse optional flags from the argument if present:
   - `strict` — require 3/3 unanimity, flag anything without it
   - `majority` — resolve via 2/3 after max rounds
   - `any` — stop after round 1, no debate (equivalent to `/dual-brainstorm`)
+- `--codex-model <id>` / `--codex-effort <level>` / `--gemini-model "<name>"` — per-seat model overrides (see **Model selection** below)
 
 Everything that is not a flag is the topic. Example: `/team-brainstorm --rounds 2 best approach to rate limiting in our API`
+
+## Model selection (optional)
+
+Each model seat can be overridden per run via flags parsed from the argument (alongside `--rounds`/`--consensus`). Substitute these placeholders into **every** Codex/`agy` invocation in the rounds below; when a flag is omitted, its placeholder is empty and behaviour is byte-identical to today:
+
+- `--codex-model <id>` → `{CODEX_M}` = `-m <id>` (else empty → your `~/.codex/config.toml` default). Use **explicit** ids: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` — **not** the bare `gpt-5.6` alias (some codex builds lack metadata for it and reject it). GPT-5.6 needs a recent codex (verified on `0.144.1`; `0.125.0` errors `"requires a newer version of Codex"`). On the **MCP** path, pass the id via the `codex()`/`codex-reply()` `model` parameter instead; for guaranteed model + effort control prefer the CLI-resume path.
+- `--codex-effort <level>` → `{CODEX_E}` = `-c 'model_reasoning_effort="<level>"'` (else empty → config default). Levels: `minimal`/`low`/`medium`/`high`/`xhigh`; `gpt-5.6-sol` needs `medium` or higher. (CLI paths only.)
+- `--gemini-model "<name>"` → `{GEMINI_MODEL}` (else `Gemini 3.1 Pro (High)`). Any `agy models` entry; **quote it** — names contain spaces. agy bakes the reasoning tier into the name (`(High)`/`(Low)`), so there is no separate effort flag.
 
 ## Step 0: Preflight Checks
 
@@ -81,6 +90,7 @@ Create a small in-memory session record for this debate:
 - `codex_mode`: `mcp` | `cli-resume` | `cli-stateless`
 - `codex_thread_id` (from JSONL `thread.started` event or MCP `threadId` return)
 - `gemini_conversation_id` (the `<UUID>` of the `.db` agy created in Round 1; resume later rounds with `agy --conversation "$gemini_conversation_id"`)
+- `codex_model` / `codex_effort` / `gemini_model` (from the model-override flags; empty = tool defaults)
 - `topic`
 - per-round outputs and summaries
 
@@ -117,7 +127,7 @@ If using CLI fallback, always prefer JSONL output so you can capture the session
 #### CLI resume mode: Round 1
 
 ```bash
-codex exec $GIT_FLAG \
+codex exec $GIT_FLAG {CODEX_M} {CODEX_E} \
   --json \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
@@ -185,7 +195,7 @@ Run in background via Bash. `agy` has no `session_id` to parse, so capture the *
 CONV_DIR=~/.gemini/antigravity-cli/conversations
 BEFORE=$(mktemp); ls "$CONV_DIR"/*.db 2>/dev/null | sort > "$BEFORE"
 
-agy --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "You are a research agent in a multi-model debate. Your task: {TOPIC}
+agy --add-dir "$PWD" --model "{GEMINI_MODEL}" -p "You are a research agent in a multi-model debate. Your task: {TOPIC}
 
 Research thoroughly. Provide specific findings, evidence, and reasoning.
 Be opinionated — take clear positions you're willing to defend.
@@ -245,7 +255,7 @@ State your updated top findings. Under 500 words."
 If `codex_mode = cli-resume`, continue the same Codex session:
 
 ```bash
-codex exec resume $GIT_FLAG \
+codex exec resume $GIT_FLAG {CODEX_M} {CODEX_E} \
   --json \
   "{CODEX_THREAD_ID}" \
   "Round 2 of the debate. Here are the other agents' positions:
@@ -272,7 +282,7 @@ If `codex_mode = cli-stateless`, use `codex exec` and inline Codex's own prior s
 Resume the same conversation with `--conversation "{GEMINI_CONVERSATION_ID}"` (the id captured in Round 1). Resuming reuses the existing `.db` — do **not** re-capture an id this round.
 
 ```bash
-agy --conversation "{GEMINI_CONVERSATION_ID}" --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "Round 2 of the debate. Here are the other agents' positions:
+agy --conversation "{GEMINI_CONVERSATION_ID}" --add-dir "$PWD" --model "{GEMINI_MODEL}" -p "Round 2 of the debate. Here are the other agents' positions:
 
 CODEX's findings:
 {Codex Round 1 summary}
@@ -320,14 +330,14 @@ Be decisive — no hedging. Under 300 words."
 
 ### Codex (via Bash — fallback)
 
-If `codex_mode = cli-resume`, continue with `codex exec resume "{CODEX_THREAD_ID}" ...` using the same Round 3 prompt.
+If `codex_mode = cli-resume`, continue with `codex exec resume $GIT_FLAG {CODEX_M} {CODEX_E} "{CODEX_THREAD_ID}" ...` using the same Round 3 prompt.
 
 If `codex_mode = cli-stateless`, use `codex exec` and inline the full debate history summary.
 
 ### Gemini (via Antigravity `agy`)
 
 ```bash
-agy --conversation "{GEMINI_CONVERSATION_ID}" --add-dir "$PWD" --model "Gemini 3.1 Pro (High)" -p "Final round. Remaining disputes:
+agy --conversation "{GEMINI_CONVERSATION_ID}" --add-dir "$PWD" --model "{GEMINI_MODEL}" -p "Final round. Remaining disputes:
 {List of disagreements from Round 2}
 
 Codex's latest position: {Codex Round 2 summary}
