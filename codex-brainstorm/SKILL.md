@@ -49,6 +49,15 @@ Construct a focused prompt. For a plan file, include:
 
 For open-ended brainstorming, ask for: multiple angles, trade-offs, creative alternatives.
 
+## Model selection (optional)
+
+By default Codex uses whatever model your `~/.codex/config.toml` specifies. To override for a single run, parse these flags from the skill's argument (everything that is not a flag is the topic/plan path):
+
+- `--codex-model <id>` → adds `-m <id>` to `codex exec`. Use an **explicit** model id, e.g. `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, or `gpt-5.5`. Avoid the bare `gpt-5.6` alias — some codex builds lack local metadata for it and reject it on ChatGPT-account auth.
+- `--codex-effort <level>` → adds `-c 'model_reasoning_effort="<level>"'` (`minimal`/`low`/`medium`/`high`/`xhigh`; newer models add `max`). Note `gpt-5.6-sol` requires `medium` or higher.
+
+Omit either flag to keep your config default. GPT-5.6 tiers need a recent codex — verified working on `0.144.1`; `0.125.0` is too old (fails with `"requires a newer version of Codex"`).
+
 ## Step 2: Run Codex in the Background
 
 **IMPORTANT: Codex does NOT read piped stdin.** Its sandbox blocks stdin forwarding, so `cat file | codex exec` silently loses the input. Instead, pass all content directly in the prompt argument. If you have a plan file, read it first and embed its contents in the prompt string.
@@ -58,7 +67,14 @@ For open-ended brainstorming, ask for: multiple angles, trade-offs, creative alt
 Prefer JSONL output (`--json`) so you can capture the session id and structured logs:
 
 ```bash
-codex exec $GIT_FLAG \
+# Optional per-run model controls (empty = your codex config defaults):
+CODEX_MODEL=""     # e.g. gpt-5.6-sol   (from --codex-model)
+CODEX_EFFORT=""    # e.g. high          (from --codex-effort)
+MODEL_ARGS=()
+[ -n "$CODEX_MODEL" ]  && MODEL_ARGS+=(-m "$CODEX_MODEL")
+[ -n "$CODEX_EFFORT" ] && MODEL_ARGS+=(-c "model_reasoning_effort=\"$CODEX_EFFORT\"")
+
+codex exec $GIT_FLAG "${MODEL_ARGS[@]}" \
   --json \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
@@ -125,7 +141,7 @@ For each accepted finding, update the plan file. For each override, note why.
 
 ## Notes
 
-- Codex uses `gpt-5.4` by default (as of 2026-03) with high reasoning effort
+- With no `--codex-model`/`--codex-effort`, Codex uses your `~/.codex/config.toml` default (model + `model_reasoning_effort`). Use explicit GPT-5.6 tier ids (`gpt-5.6-sol`/`-terra`/`-luna`), not the bare `gpt-5.6` alias
 - It will autonomously explore the repo — expect 10-30 tool calls and 30-120 seconds runtime
 - Output goes to a temp file; use `run_in_background: true` on the Bash call so the main context isn't blocked
 - If `codex` is not on PATH: `which codex` — it installs via npm as `codex-cli`
