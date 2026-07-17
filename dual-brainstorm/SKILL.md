@@ -20,10 +20,10 @@ If `claude-desktop`, you are in Claude Desktop which has a **60-second hardcoded
 **Check tool availability:**
 
 ```bash
-which codex && which agy
+which codex && which agy && which python3
 ```
 
-If only one tool is available, fall back to single-tool + your own review. If neither is available, abort and suggest installing them.
+If only one tool is available, fall back to single-tool + your own review. If neither is available, abort and suggest installing them. `python3` is required too — the Codex JSONL parser in Step 1 depends on it; if it's missing, extract the response with `jq` instead: `jq -Rrn '[inputs|fromjson?|select(.type=="item.completed" and .item.type=="agent_message" and (.item.text//"")!="")|.item.text]|last' "$CODEX_OUT"`. The `-Rrn '[inputs|fromjson?|...]'` form is deliberate — Codex prepends a non-JSON `Reading additional input from stdin...` line, so a plain `jq -s` slurp errors out; `fromjson?` skips unparseable lines.
 
 **Auto-mode permission (important):** In Claude Code **auto mode**, every Bash command is screened by the auto-mode classifier unless a matching `permissions.allow` rule exists. `codex exec` and `agy` are both agentic CLIs, so the classifier tends to **block them** without an explicit allow-rule — you'll see "Blocked by classifier" and the tool never runs. Add both rules to `.claude/settings.local.json` so each seat bypasses the classifier:
 
@@ -72,16 +72,20 @@ CODEX_MODEL_ARGS=()
 [ -n "$CODEX_MODEL" ]  && CODEX_MODEL_ARGS+=(-m "$CODEX_MODEL")
 [ -n "$CODEX_EFFORT" ] && CODEX_MODEL_ARGS+=(-c "model_reasoning_effort=\"$CODEX_EFFORT\"")
 
+CODEX_OUT=$(mktemp)   # background task writes JSONL here; read it back after completion
+
 codex exec $GIT_FLAG "${CODEX_MODEL_ARGS[@]}" \
   --json \
   --config 'approval_policy="never"' \
   --config 'sandbox_permissions=["disk-full-read-access"]' \
-  "$PROMPT_WITH_ALL_CONTENT_INLINED" 2>&1
+  "$PROMPT_WITH_ALL_CONTENT_INLINED" </dev/null > "$CODEX_OUT" 2>&1
 ```
 
-Parse the JSONL output to extract the thread ID and response:
+`</dev/null` (stdin) and `> "$CODEX_OUT" 2>&1` (output capture) are both **required**, not illustrative — without the stdin redirect the backgrounded task hangs forever (see the IMPORTANT note above), and without the output redirect there is no file for the parser to read. **After the background task completes** (wait for its notification), read the file back and parse it:
 
 ```bash
+OUTPUT=$(cat "$CODEX_OUT")
+
 CODEX_THREAD_ID=$(echo "$OUTPUT" | python3 -c "
 import sys,json
 for line in sys.stdin:
@@ -125,10 +129,11 @@ print(msg)
 # otherwise hangs forever on stdin EOF. Read-only by default (no
 # `--dangerously-skip-permissions` needed for a brainstorm).
 GEMINI_MODEL="${GEMINI_MODEL:-Gemini 3.1 Pro (High)}"   # override via --gemini-model "<name>"
-agy --add-dir "$PWD" --model "$GEMINI_MODEL" -p "$PROMPT_WITH_ALL_CONTENT_INLINED" </dev/null 2>&1
+GEMINI_OUT=$(mktemp)   # capture the seat's markdown answer for Step 3
+agy --add-dir "$PWD" --model "$GEMINI_MODEL" -p "$PROMPT_WITH_ALL_CONTENT_INLINED" </dev/null > "$GEMINI_OUT" 2>&1
 ```
 
-`agy` has no `session_id`/`-o json` output, but dual-brainstorm is single-shot so none is needed (multi-round state lives in `/team-brainstorm`).
+`agy`'s answer is plain markdown (no JSONL), so `$GEMINI_OUT` is read directly in Step 3 — no parser needed. `agy` has no `session_id`/`-o json` output, but dual-brainstorm is single-shot so none is needed (multi-round state lives in `/team-brainstorm`).
 
 Both use `run_in_background: true`. Both get the same prompt so their outputs are directly comparable.
 
