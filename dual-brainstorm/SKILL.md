@@ -25,6 +25,15 @@ which codex && which agy
 
 If only one tool is available, fall back to single-tool + your own review. If neither is available, abort and suggest installing them.
 
+**Auto-mode permission (important):** In Claude Code **auto mode**, every Bash command is screened by the auto-mode classifier unless a matching `permissions.allow` rule exists. `codex exec` and `agy` are both agentic CLIs, so the classifier tends to **block them** without an explicit allow-rule — you'll see "Blocked by classifier" and the tool never runs. Add both rules to `.claude/settings.local.json` so each seat bypasses the classifier:
+
+```json
+"Bash(codex exec:*)",
+"Bash(agy:*)"
+```
+
+Note: a stale `Bash(gemini:*)` rule does **not** cover `agy` (different binary). If the `agy` seat is classifier-denied while `codex` succeeds, a missing `Bash(agy:*)` rule is the cause — apply graceful degradation for this run, and tell the user to add the rule so future runs work.
+
 **Gemini is now Antigravity's `agy`.** The old `gemini` CLI is dead for headless use — Google killed its free "Login with Google" auth on **2026-06-18**, so `gemini -p` now fails with `IneligibleTierError … UNSUPPORTED_CLIENT`. `agy` is a native binary (ships with the [Antigravity app](https://antigravity.google) at `~/.local/bin/agy`) that reuses your existing Antigravity login — no API key, no node-version workaround, no version gate. Just confirm it runs with `agy --version`. Pick a Gemini model from `agy models` (this skill uses `"Gemini 3.1 Pro (High)"`).
 
 **Codex mode detection:** Check if `codex exec resume --help` succeeds. If so, use `--json` output to capture the thread ID for potential follow-up. Otherwise, use stateless mode.
@@ -94,7 +103,15 @@ for line in sys.stdin:
     try:
         d=json.loads(line)
         if d.get('type')=='item.completed':
-            msg=d.get('item',{}).get('text','')
+            it=d.get('item',{})
+            # Only capture the assistant's message text. A real run emits many
+            # item.completed events: agent_message (has .text) interleaved with
+            # command_execution / reasoning items (empty .text). Blindly taking
+            # the last item's .text would return '' whenever Codex's final item
+            # is not an agent_message, making a successful run look empty. Take
+            # the LAST non-empty agent_message instead.
+            if it.get('type')=='agent_message' and it.get('text'):
+                msg=it['text']
     except: pass
 print(msg)
 ")

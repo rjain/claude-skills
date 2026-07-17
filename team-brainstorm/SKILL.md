@@ -67,6 +67,8 @@ command -v agy >/dev/null && agy --version || echo "agy not found"
 
 If `agy` is missing, it ships with the Antigravity app; run `agy install` to configure paths, or call it at `~/.local/bin/agy`. Pick a Gemini model from `agy models` — this skill uses `"Gemini 3.1 Pro (High)"` to keep the seat a "Gemini" perspective. `agy -p` is **read-only by default** (no `--dangerously-skip-permissions` needed for research rounds) and needs `--add-dir "$PWD"` to see your code.
 
+**Auto-mode permission (important):** In Claude Code **auto mode**, every Bash command is screened by the auto-mode classifier unless a matching `permissions.allow` rule exists. `codex exec` and `agy` are both agentic CLIs, so the classifier tends to **block them** without an explicit allow-rule ("Blocked by classifier", tool never runs). Add both to `.claude/settings.local.json` — `"Bash(codex exec:*)"` and `"Bash(agy:*)"` — so each seat bypasses the classifier. A stale `Bash(gemini:*)` rule does **not** cover `agy` (different binary); if the Gemini seat is classifier-denied while Codex succeeds, a missing `Bash(agy:*)` rule is the cause.
+
 Unlike `gemini`, `agy` has **no `-o json` / `session_id`** output. It keeps state per *conversation*, stored on disk as `~/.gemini/antigravity-cli/conversations/<UUID>.db`. For statefulness across rounds, capture that `<UUID>` after Round 1 by diffing the conversations dir before/after the call, then resume later rounds with `agy --conversation "<UUID>"`. **Verified:** `--conversation <id>` resumes that *specific* conversation even when it is not the most recent — safe for this interleaved debate. **Caveat:** if you pass an unknown or typo'd id, `agy` prints `Warning: conversation "..." not found` and **silently falls back to the most-recent conversation** — so never pre-mint your own id (`agy` ignores it and assigns its own), and treat a "not found" warning as a failed resume. This same fallback is why bare `-c` / `--continue` ("most recent") is too fragile to rely on here.
 
 If a plan file path was provided as the argument, read the file now so its content can be embedded in prompts.
@@ -173,7 +175,14 @@ for line in sys.stdin:
     try:
         d=json.loads(line)
         if d.get('type')=='item.completed':
-            msg=d.get('item',{}).get('text','')
+            it=d.get('item',{})
+            # A real run emits many item.completed events: agent_message (has
+            # .text) interleaved with command_execution / reasoning items (empty
+            # .text). Blindly taking the last item's .text returns '' whenever
+            # Codex's final item is not an agent_message, making a successful run
+            # look empty. Capture the LAST non-empty agent_message instead.
+            if it.get('type')=='agent_message' and it.get('text'):
+                msg=it['text']
     except: pass
 print(msg)
 ")
