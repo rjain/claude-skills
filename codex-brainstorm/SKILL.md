@@ -38,6 +38,8 @@ GIT_FLAG="--skip-git-repo-check"
 
 **Auto-mode permission:** In Claude Code **auto mode**, every Bash command is screened by the auto-mode classifier unless a matching `permissions.allow` rule exists. `codex exec` is an agentic CLI, so the classifier tends to **block it** ("Blocked by classifier", tool never runs) without an explicit allow-rule. Add `"Bash(codex exec:*)"` to `.claude/settings.local.json` so it bypasses the classifier.
 
+**Parser dependency:** the JSONL response parser below needs `python3` on PATH (`which python3`). If it's missing, extract the response with `jq` instead: `jq -Rrn '[inputs|fromjson?|select(.type=="item.completed" and .item.type=="agent_message" and (.item.text//"")!="")|.item.text]|last' "$CODEX_OUT"`. The `-Rrn '[inputs|fromjson?|...]'` form is deliberate — Codex prepends a non-JSON `Reading additional input from stdin...` line, so a plain `jq -s` slurp errors out; `fromjson?` skips unparseable lines.
+
 **Known config pitfall:** If the user's `~/.codex/config.toml` has `web_search = "live"` under `[features]`, `codex exec` will fail with `Error loading config.toml: invalid type: string "live"`. Work around this by setting `CODEX_HOME` to a temp dir with a clean config, or ask the user to move `web_search` to the top level of their config (outside `[features]`). Note: if `codex exec` fails with 401 Unauthorized using `CODEX_HOME` override, the API key is stored in the original home — use the original `CODEX_HOME` and only override specific config keys via `--config`.
 
 ## Step 1: Build the Prompt
