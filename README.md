@@ -10,18 +10,18 @@ Skills are prompt files that extend Claude Code with slash commands. Each skill 
 
 ## Installation
 
-There are two ways to install: as a **plugin** (one install, all three skills) or as **individual skills** (pick what you need). Both give you the same slash commands.
+There are two ways to install: as a **plugin** (one install, all four skills) or as **individual skills** (pick what you need). Both give you the same slash commands.
 
 ### Option A: Plugin (recommended for most users)
 
-A plugin is a versioned bundle tracked in `settings.json`. One command installs all three skills at once.
+A plugin is a versioned bundle tracked in `settings.json`. One command installs all four skills at once.
 
 In a Claude Code session, run:
 ```
 /plugin marketplace add rjain/claude-skills
 ```
 
-This registers the repo. You'll then be prompted to browse and enable the `multi-model-brainstorm` plugin, which contains `/codex-brainstorm`, `/gemini-brainstorm`, and `/dual-brainstorm`. Choose whether to enable it at project level (current project only) or global level (all sessions including desktop app).
+This registers the repo. You'll then be prompted to browse and enable the `multi-model-brainstorm` plugin, which contains `/codex-brainstorm`, `/gemini-brainstorm`, `/dual-brainstorm`, and `/team-brainstorm`. Choose whether to enable it at project level (current project only) or global level (all sessions including desktop app).
 
 ### Option B: Individual Skills
 
@@ -30,7 +30,7 @@ A skill is a single `SKILL.md` file that defines one slash command. Symlink only
 ```bash
 git clone https://github.com/rjain/claude-skills.git ~/claude-skills
 
-# Symlink the skills you want (team-brainstorm is standalone — not in the plugin bundle)
+# Symlink all four (or pick just the ones you want)
 ln -s ~/claude-skills/codex-brainstorm  ~/.claude/skills/codex-brainstorm
 ln -s ~/claude-skills/gemini-brainstorm ~/.claude/skills/gemini-brainstorm
 ln -s ~/claude-skills/dual-brainstorm   ~/.claude/skills/dual-brainstorm
@@ -43,7 +43,7 @@ Skills are available immediately — no restart required.
 
 | | Plugin | Individual Skills |
 |---|---|---|
-| **Install** | One command installs all three | Symlink each skill separately |
+| **Install** | One command installs all four | Symlink each skill separately |
 | **Updates** | Versioned; update via marketplace | Manual `git pull` |
 | **Scope** | Project or global `settings.json` | Global (`~/.claude/skills/`) or project (`.claude/skills/`) |
 | **Flexibility** | All-or-nothing bundle | Pick only the skills you need |
@@ -214,7 +214,7 @@ Plan updated: 3 new items added, onboarding section extended.
 
 ### `/dual-brainstorm`
 
-Runs Codex and Gemini **simultaneously** as background tasks, does an independent Claude review in parallel, then produces a three-way synthesis. This is the most valuable of the three skills — the synthesis table shows exactly which findings all three models agree on (high confidence) vs. which only one raised (needs validation).
+Runs Codex and Gemini **simultaneously** as background tasks, does an independent Claude review in parallel, then produces a three-way synthesis. This is the most valuable of the single-shot skills — the synthesis table shows exactly which findings all three models agree on (high confidence) vs. which only one raised (needs validation). (For a stress-tested version where the models debate across rounds, see [`/team-brainstorm`](#team-brainstorm).)
 
 **When to use:** Before finalizing a plan, before starting a large implementation, or any time you want the highest-confidence critique with the least manual effort.
 
@@ -285,7 +285,7 @@ Plan updated: 8 new items added across P0–P2.
 
 Runs a **stateful, multi-round debate** across Claude, Codex, and a Gemini model. Where `/dual-brainstorm` is single-shot (each tool answers once), team-brainstorm keeps all three models in conversation: each researches independently in Round 1, then **critiques the others' positions** and concedes or defends across later rounds. Each model retains its own full memory between rounds — Codex via `codex exec resume`, Gemini via `agy --conversation`, Claude natively — so positions genuinely evolve. Claude orchestrates the loop, detects convergence, and synthesizes a consensus.
 
-> **Note:** team-brainstorm is a **standalone skill** — it is not part of the `multi-model-brainstorm` plugin bundle. Install it individually by symlinking it (see [Option B](#option-b-individual-skills)): `ln -s "$PWD/team-brainstorm" ~/.claude/skills/team-brainstorm`.
+> **Note:** team-brainstorm is included in the `multi-model-brainstorm` plugin as of **v1.3.0** (or install it individually — see [Option B](#option-b-individual-skills)). It is the most involved of the four skills: multi-round, stateful, and it runs each model several times, so expect a longer run (~2–4 minutes for a 3-round debate).
 
 **When to use:** Higher-stakes questions where you want positions stress-tested, not just collected — architecture decisions, trade-off analysis, or any topic where surfacing *why* models disagree (and watching one concede) is more valuable than a static side-by-side. Works on code topics or any research question.
 
