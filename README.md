@@ -2,7 +2,7 @@
 
 A collection of reusable [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for multi-model collaboration on planning and design.
 
-Each skill runs one or more AI CLI tools (Codex, and a Gemini model via Antigravity's `agy`) autonomously against your real codebase, then synthesizes their findings alongside Claude's own review. The result is a grounded, multi-perspective critique you can act on immediately.
+Each skill runs one or more AI CLI tools (Codex, and a Gemini model via Antigravity's `agy`) autonomously against your real codebase, then synthesizes their findings alongside Claude's own review. The result is a grounded, multi-perspective critique you can act on immediately. They range from single-shot review (`/codex-brainstorm`, `/gemini-brainstorm`, `/dual-brainstorm`) to a stateful multi-round debate (`/team-brainstorm`).
 
 ## What are skills?
 
@@ -30,10 +30,11 @@ A skill is a single `SKILL.md` file that defines one slash command. Symlink only
 ```bash
 git clone https://github.com/rjain/claude-skills.git ~/claude-skills
 
-# Symlink all three (or pick just the ones you want)
+# Symlink the skills you want (team-brainstorm is standalone — not in the plugin bundle)
 ln -s ~/claude-skills/codex-brainstorm  ~/.claude/skills/codex-brainstorm
 ln -s ~/claude-skills/gemini-brainstorm ~/.claude/skills/gemini-brainstorm
 ln -s ~/claude-skills/dual-brainstorm   ~/.claude/skills/dual-brainstorm
+ln -s ~/claude-skills/team-brainstorm   ~/.claude/skills/team-brainstorm
 ```
 
 Skills are available immediately — no restart required.
@@ -66,6 +67,26 @@ For most users, **global installation** is simpler — you get the skills everyw
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
 - `codex` — `npm install -g @openai/codex`
 - `agy` (Antigravity CLI) — ships with the [Antigravity app](https://antigravity.google); provides the Gemini model. (The old `gemini` CLI is no longer usable headlessly — Google discontinued its free "Login with Google" auth on 2026-06-18.)
+- `python3` — used by the Codex JSONL parser in `/dual-brainstorm` and `/team-brainstorm` (preinstalled on macOS and most Linux). If it's ever unavailable, the skills fall back to a `jq` one-liner.
+
+### Auto-mode permission (required if you run Claude Code in auto mode)
+
+In **auto mode**, every Bash command is screened by an auto-mode classifier, and agentic CLIs like `codex exec` and `agy` get **blocked** ("Blocked by classifier", the tool never runs) unless you allowlist them. Add these to your project `.claude/settings.local.json` (or user settings) so each seat bypasses the classifier:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(codex exec:*)",
+      "Bash(agy:*)"
+    ]
+  }
+}
+```
+
+Notes:
+- A stale `Bash(gemini:*)` rule does **not** cover `agy` — it's a different binary. If the Gemini seat is classifier-denied while Codex succeeds, a missing `Bash(agy:*)` rule is the cause.
+- This is only needed in auto mode. In the default (interactive) mode you'll simply be prompted to approve each command instead.
 
 ---
 
@@ -257,6 +278,38 @@ Plan updated: 8 new items added across P0–P2.
 ```
 
 **Why three perspectives?** Codex and Gemini have different reasoning patterns and different strengths when reading code. In practice, they disagree on roughly half their findings — running only one gives you half the picture. The synthesis table makes disagreements explicit so you can investigate the most interesting ones directly.
+
+---
+
+### `/team-brainstorm`
+
+Runs a **stateful, multi-round debate** across Claude, Codex, and a Gemini model. Where `/dual-brainstorm` is single-shot (each tool answers once), team-brainstorm keeps all three models in conversation: each researches independently in Round 1, then **critiques the others' positions** and concedes or defends across later rounds. Each model retains its own full memory between rounds — Codex via `codex exec resume`, Gemini via `agy --conversation`, Claude natively — so positions genuinely evolve. Claude orchestrates the loop, detects convergence, and synthesizes a consensus.
+
+> **Note:** team-brainstorm is a **standalone skill** — it is not part of the `multi-model-brainstorm` plugin bundle. Install it individually by symlinking it (see [Option B](#option-b-individual-skills)): `ln -s "$PWD/team-brainstorm" ~/.claude/skills/team-brainstorm`.
+
+**When to use:** Higher-stakes questions where you want positions stress-tested, not just collected — architecture decisions, trade-off analysis, or any topic where surfacing *why* models disagree (and watching one concede) is more valuable than a static side-by-side. Works on code topics or any research question.
+
+**Requires:** `codex` and `agy` on PATH, plus `python3` (Codex JSONL parsing). Falls back to a two-model debate if one tool is missing. In auto mode, the same `Bash(codex exec:*)` / `Bash(agy:*)` allow-rules apply (see [Prerequisites](#prerequisites)).
+
+**Usage:**
+```
+/team-brainstorm path/to/plan.md
+/team-brainstorm "best approach to rate limiting in our API"
+/team-brainstorm --rounds 2 --consensus strict "the cache invalidation design"
+```
+
+**Flags:**
+- `--rounds N` — max debate rounds (default: 3)
+- `--consensus strict|majority|any` — `strict` requires 3/3 unanimity; `majority` (default) resolves 2/3 after the final round; `any` stops after Round 1 (equivalent to `/dual-brainstorm`)
+- `--codex-model` / `--codex-effort` / `--gemini-model` — per-seat model overrides
+
+**What happens:**
+1. **Preflight** — detects the runtime and picks the best Codex path (MCP in Claude Code CLI; CLI-resume in Claude Desktop, which has a 60s MCP timeout)
+2. **Round 1** — all three research independently and take clear positions
+3. **Round 2+** — each model sees the others' positions and challenges, concedes, or strengthens its own; Claude tracks agreements, disputes, and concessions
+4. **Synthesis** — a consensus table showing each model's position per finding and how it resolved (unanimous / majority / flagged), plus a short narrative of who conceded what
+
+**Why a debate, not just parallel answers?** Independent answers can be confidently wrong in the same way. Forcing the models to react to each other surfaces the reasoning behind disagreements and lets a stronger argument actually change a position — which a one-shot synthesis can't capture.
 
 ---
 
